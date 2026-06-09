@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quản trị — Phản hồi khách hàng</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="../shared/style.css" />
+  <style>
+    .edit-star { font-size: 1.75rem; cursor: pointer; color: #d1d5db; transition: color .1s; line-height:1; }
+    .edit-star.filled  { color: #facc15; }
+    .edit-star.hovered { color: #fde047; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+
+<!-- ── Edit modal ──────────────────────────────────────────────── -->
+<div id="edit-modal"
+     class="hidden fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-5">Chỉnh sửa phản hồi</h2>
+    <form id="edit-form" class="flex flex-col gap-4" novalidate>
+      <input type="hidden" id="edit-id" />
+
+      <div class="flex flex-col gap-1">
+        <label for="edit-name" class="text-sm font-medium text-gray-700">
+          Tên <span class="text-gray-400 font-normal">(tùy chọn)</span>
+        </label>
+        <input id="edit-name" type="text"
+               class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label for="edit-location" class="text-sm font-medium text-gray-700">Địa điểm</label>
+        <select id="edit-location"
+                class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </select>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <span class="text-sm font-medium text-gray-700">Đánh giá <span class="text-red-500">*</span></span>
+        <div id="edit-star-row" class="flex gap-1">
+          <span class="edit-star" data-val="1">★</span>
+          <span class="edit-star" data-val="2">★</span>
+          <span class="edit-star" data-val="3">★</span>
+          <span class="edit-star" data-val="4">★</span>
+          <span class="edit-star" data-val="5">★</span>
+        </div>
+        <input type="hidden" id="edit-rating" />
+        <p id="edit-err-rating" class="hidden text-xs text-red-500">Vui lòng chọn đánh giá.</p>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label for="edit-comment" class="text-sm font-medium text-gray-700">
+          Nhận xét <span class="text-red-500">*</span>
+        </label>
+        <textarea id="edit-comment" rows="4"
+                  class="border border-gray-300 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+        <p id="edit-err-comment" class="hidden text-xs text-red-500">Vui lòng nhập nhận xét.</p>
+      </div>
+
+      <div class="flex justify-end gap-3 pt-1">
+        <button type="button" id="edit-cancel"
+                class="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+          Huỷ
+        </button>
+        <button type="submit"
+                class="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
+          Lưu thay đổi
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="app-nav"></div>
+
+<main class="page-content">
+  <h1 class="text-2xl font-semibold text-gray-900 mb-6">Quản trị</h1>
+
+  <!-- ── Summary panel ──────────────────────────────────────── -->
+  <div class="flex flex-col lg:flex-row gap-4 mb-6">
+
+    <div class="flex flex-col gap-3 lg:w-56 flex-shrink-0">
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Tổng phản hồi</p>
+        <p id="stat-total" class="text-3xl font-bold text-gray-900">—</p>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Đánh giá TB</p>
+        <p id="stat-avg" class="text-3xl font-bold text-gray-900">—</p>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-4">
+        <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Địa điểm phổ biến</p>
+        <p id="stat-location" class="text-xl font-bold text-gray-900 leading-tight">—</p>
+      </div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-xl p-4 flex-1 min-w-0">
+      <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Phân bổ đánh giá</p>
+      <div class="relative h-40">
+        <canvas id="rating-chart"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Filters ────────────────────────────────────────────── -->
+  <div class="bg-white border border-gray-200 rounded-xl p-4 flex flex-wrap gap-4 items-end mb-4">
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide" for="f-location">Địa điểm</label>
+      <select id="f-location"
+              class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <option value="">Tất cả địa điểm</option>
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide" for="f-rating">Đánh giá tối thiểu</label>
+      <select id="f-rating"
+              class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <option value="1">1 sao trở lên</option>
+        <option value="2">2 sao trở lên</option>
+        <option value="3">3 sao trở lên</option>
+        <option value="4">4 sao trở lên</option>
+        <option value="5">5 sao</option>
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide" for="f-search">Tìm trong nhận xét</label>
+      <input type="search" id="f-search" placeholder="Từ khoá…"
+             class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide" for="f-from">Từ ngày</label>
+      <input type="date" id="f-from"
+             class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide" for="f-to">Đến ngày</label>
+      <input type="date" id="f-to"
+             class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+    </div>
+
+    <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer pb-2 select-none">
+      <input type="checkbox" id="f-show-hidden" class="w-4 h-4 rounded accent-indigo-600" />
+      Hiện mục đã ẩn
+    </label>
+
+  </div>
+
+  <!-- ── Count + Export ─────────────────────────────────────── -->
+  <div class="flex items-center justify-between mb-3">
+    <p id="result-count" class="text-sm text-gray-500"></p>
+    <button id="btn-export"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+      Export CSV
+    </button>
+  </div>
+
+  <!-- ── Table ──────────────────────────────────────────────── -->
+  <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-200">
+            <th class="text-left px-4 py-3 font-semibold text-gray-500 w-40">Ngày gửi</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-500 w-28">Địa điểm</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-500 w-24">Đánh giá</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-500 w-32">Tên</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-500">Nhận xét</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-500 w-28">Thao tác</th>
+          </tr>
+        </thead>
+        <tbody id="feedback-body"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script src="../shared/storage.js"></script>
+<script src="../shared/nav.js"></script>
+<script>
+  // ── Helpers ─────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function formatDate(iso) {
+    const dt = new Date(iso)
+    const dd  = String(dt.getDate()).padStart(2, '0')
+    const mm  = String(dt.getMonth() + 1).padStart(2, '0')
+    const hh  = String(dt.getHours()).padStart(2, '0')
+    const min = String(dt.getMinutes()).padStart(2, '0')
+    return `${dd}/${mm}/${dt.getFullYear()} ${hh}:${min}`
+  }
+
+  function sentimentClass(rating) {
+    if (rating <= 2) return 'bg-red-100'
+    if (rating === 3) return 'bg-yellow-100'
+    return 'bg-green-100'
+  }
+
+  // ── Populate dropdowns ───────────────────────────────────────
+  ;[document.getElementById('f-location'), document.getElementById('edit-location')]
+    .forEach(sel => {
+      if (sel.id === 'f-location') {
+        const all = document.createElement('option')
+        all.value = ''; all.textContent = 'Tất cả địa điểm'
+        sel.appendChild(all)
+      }
+      LOCATIONS.forEach(loc => {
+        const opt = document.createElement('option')
+        opt.value = loc; opt.textContent = loc
+        sel.appendChild(opt)
+      })
+    })
+
+  // ── Chart ────────────────────────────────────────────────────
+  let ratingChart = null
+
+  function updateChart(filtered) {
+    const counts = [1,2,3,4,5].map(r => filtered.filter(e => e.rating === r).length)
+    const colors = ['#fca5a5','#fca5a5','#fde68a','#86efac','#86efac']
+    if (ratingChart) {
+      ratingChart.data.datasets[0].data = counts
+      ratingChart.update()
+    } else {
+      ratingChart = new Chart(
+        document.getElementById('rating-chart').getContext('2d'),
+        {
+          type: 'bar',
+          data: {
+            labels: ['1★','2★','3★','4★','5★'],
+            datasets: [{ data: counts, backgroundColor: colors, borderRadius: 4 }],
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } },
+              x: { grid: { display: false } },
+            },
+          },
+        }
+      )
+    }
+  }
+
+  // ── Summary ──────────────────────────────────────────────────
+  function updateSummary(all) {
+    const visible = all.filter(e => !e.hidden)
+    const total = visible.length
+    document.getElementById('stat-total').textContent = total
+
+    if (total === 0) {
+      document.getElementById('stat-avg').textContent = '—'
+      document.getElementById('stat-location').textContent = '—'
+      return
+    }
+
+    const avg = (visible.reduce((s, e) => s + e.rating, 0) / total).toFixed(1)
+    document.getElementById('stat-avg').textContent = avg + ' / 5'
+
+    const tally = {}
+    visible.forEach(e => { tally[e.location] = (tally[e.location] || 0) + 1 })
+    const top = Object.entries(tally).sort((a, b) => b[1] - a[1])[0][0]
+    document.getElementById('stat-location').textContent = top
+  }
+
+  // ── Filter + Render ──────────────────────────────────────────
+  let currentFiltered = []
+
+  function render() {
+    const all = getFeedback()
+    const showHidden = document.getElementById('f-show-hidden').checked
+    const location   = document.getElementById('f-location').value
+    const minRating  = Number(document.getElementById('f-rating').value)
+    const from       = document.getElementById('f-from').value
+    const to         = document.getElementById('f-to').value
+    const keyword    = document.getElementById('f-search').value.trim().toLowerCase()
+
+    const pool = showHidden ? all : all.filter(e => !e.hidden)
+
+    const filtered = pool.filter(e => {
+      if (location && e.location !== location) return false
+      if (e.rating < minRating) return false
+      const day = e.timestamp.slice(0, 10)
+      if (from && day < from) return false
+      if (to   && day > to)   return false
+      if (keyword && !e.comment.toLowerCase().includes(keyword)) return false
+      return true
+    })
+
+    currentFiltered = filtered
+
+    updateSummary(all)
+    updateChart(filtered)
+
+    const visibleTotal = pool.length
+    document.getElementById('result-count').textContent =
+      `Hiển thị ${filtered.length} / ${visibleTotal} phản hồi`
+
+    const tbody = document.getElementById('feedback-body')
+    if (filtered.length === 0) {
+      tbody.innerHTML = `
+        <tr><td colspan="6" class="text-center text-gray-400 py-12">
+          ${all.length === 0 ? 'No feedback yet.' : 'No feedback matches your filters.'}
+        </td></tr>`
+      return
+    }
+
+    tbody.innerHTML = filtered.map(e => {
+      const hidden = !!e.hidden
+      const rowBg  = hidden ? 'bg-gray-100 opacity-60' : sentimentClass(e.rating)
+      return `
+        <tr class="${rowBg} border-b border-gray-100 last:border-0">
+          <td class="px-4 py-3 text-gray-500 tabular-nums">${formatDate(e.timestamp)}</td>
+          <td class="px-4 py-3">${escHtml(e.location)}</td>
+          <td class="px-4 py-3">${'★'.repeat(e.rating)}${'☆'.repeat(5 - e.rating)}</td>
+          <td class="px-4 py-3 ${e.name ? '' : 'text-gray-400 italic'}">${escHtml(e.name) || '—'}</td>
+          <td class="px-4 py-3 whitespace-pre-wrap">${escHtml(e.comment)}</td>
+          <td class="px-4 py-3">
+            <div class="flex gap-2">
+              <button onclick="openEdit('${e.id}')"
+                      class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 text-gray-600">
+                Sửa
+              </button>
+              ${hidden
+                ? `<button onclick="restoreRow('${e.id}')"
+                           class="text-xs px-2 py-1 rounded border border-green-300 hover:bg-green-50 text-green-700">
+                     Khôi phục
+                   </button>`
+                : `<button onclick="hideRow('${e.id}')"
+                           class="text-xs px-2 py-1 rounded border border-red-300 hover:bg-red-50 text-red-600">
+                     Ẩn
+                   </button>`
+              }
+            </div>
+          </td>
+        </tr>`
+    }).join('')
+  }
+
+  // ── Soft delete / restore ────────────────────────────────────
+  function hideRow(id)    { updateFeedback(id, { hidden: true  }); render() }
+  function restoreRow(id) { updateFeedback(id, { hidden: false }); render() }
+
+  // ── Edit modal ───────────────────────────────────────────────
+  let editSelectedRating = 0
+  const editStars = document.querySelectorAll('.edit-star')
+  const editRatingInput = document.getElementById('edit-rating')
+
+  function paintEditStars(upTo) {
+    editStars.forEach(s => {
+      const v = Number(s.dataset.val)
+      s.classList.toggle('filled',  !upTo && v <= editSelectedRating)
+      s.classList.toggle('hovered', !!upTo && v <= upTo)
+    })
+  }
+
+  editStars.forEach(s => {
+    s.addEventListener('click', () => {
+      editSelectedRating = Number(s.dataset.val)
+      editRatingInput.value = editSelectedRating
+      paintEditStars(0)
+      document.getElementById('edit-err-rating').classList.add('hidden')
+    })
+    s.addEventListener('mouseover', () => paintEditStars(Number(s.dataset.val)))
+    s.addEventListener('mouseout',  () => paintEditStars(0))
+  })
+
+  function openEdit(id) {
+    const entry = getFeedback().find(e => e.id === id)
+    if (!entry) return
+    document.getElementById('edit-id').value      = id
+    document.getElementById('edit-name').value    = entry.name || ''
+    document.getElementById('edit-location').value = entry.location
+    document.getElementById('edit-comment').value = entry.comment
+    editSelectedRating = entry.rating
+    editRatingInput.value = entry.rating
+    paintEditStars(0)
+    ;['edit-err-rating','edit-err-comment'].forEach(id =>
+      document.getElementById(id).classList.add('hidden')
+    )
+    document.getElementById('edit-modal').classList.remove('hidden')
+    document.getElementById('edit-name').focus()
+  }
+
+  function closeEdit() {
+    document.getElementById('edit-modal').classList.add('hidden')
+  }
+
+  document.getElementById('edit-cancel').addEventListener('click', closeEdit)
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('edit-modal')) closeEdit()
+  })
+
+  document.getElementById('edit-form').addEventListener('submit', e => {
+    e.preventDefault()
+    const rating  = Number(editRatingInput.value)
+    const comment = document.getElementById('edit-comment').value.trim()
+    let valid = true
+
+    if (!rating) {
+      document.getElementById('edit-err-rating').classList.remove('hidden')
+      valid = false
+    }
+    if (!comment) {
+      document.getElementById('edit-err-comment').classList.remove('hidden')
+      valid = false
+    }
+    if (!valid) return
+
+    updateFeedback(document.getElementById('edit-id').value, {
+      name:     document.getElementById('edit-name').value.trim(),
+      location: document.getElementById('edit-location').value,
+      rating,
+      comment,
+    })
+    closeEdit()
+    render()
+  })
+
+  // ── Export CSV ───────────────────────────────────────────────
+  function exportCsv() {
+    if (currentFiltered.length === 0) { alert('Nothing to export'); return }
+    const quote = v => '"' + String(v ?? '').replace(/"/g, '""') + '"'
+    const header = 'Date,Location,Rating,Name,Comment'
+    const rows = currentFiltered.map(e =>
+      [formatDate(e.timestamp), e.location, e.rating, e.name || '', quote(e.comment)].join(',')
+    )
+    const csv  = '﻿' + [header, ...rows].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const a    = document.createElement('a')
+    a.href     = URL.createObjectURL(blob)
+    a.download = `feedback-export-${new Date().toISOString().slice(0,10)}.csv`
+    document.body.appendChild(a); a.click()
+    document.body.removeChild(a); URL.revokeObjectURL(a.href)
+  }
+
+  // ── Wire up controls ─────────────────────────────────────────
+  ;['f-location','f-rating','f-from','f-to','f-show-hidden'].forEach(id =>
+    document.getElementById(id).addEventListener('change', render)
+  )
+  document.getElementById('f-search').addEventListener('input', render)
+  document.getElementById('btn-export').addEventListener('click', exportCsv)
+
+  render()
+</script>
+</body>
+</html>

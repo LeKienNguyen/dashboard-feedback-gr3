@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gửi phản hồi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../shared/style.css" />
+  <style>
+    /* ── Reset & background ─────────────────────────────────────────
+       The image is 1280×720 (16:9 landscape) with this layout:
+         Top-left ~23% width × ~50% height  →  "Claude GROUP 3" text, NO people
+         Top-right 77% width × 50% height   →  4 male portraits
+         Bottom full width × 50% height     →  6 female portraits
+       We use background-position: left center so the left (safe) edge
+       is always anchored to x=0 of the viewport.
+       With cover sizing, the image scales until height fills the screen,
+       so the portrait rows are ALWAYS at exactly 50 vh from the top.     */
+    html { height: 100%; }
+    body {
+      min-height: 100dvh;
+      background: url('../assets/1.png') left center / cover no-repeat;
+      color: #fff;
+      margin: 0;
+    }
+
+    /* ── Transparent nav ──────────────────────────────────────────── */
+    #app-nav nav {
+      background: rgba(0, 0, 0, 0.5) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+      box-shadow: none !important;
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+    }
+    #app-nav .max-w-5xl > span   { color: #fff !important; }
+    #app-nav nav a               { color: rgba(255,255,255,.6) !important; }
+    #app-nav nav a:hover         { color: #fff !important; background: rgba(255,255,255,.1) !important; }
+    #app-nav nav a.active        { background: rgba(99,102,241,.85) !important; color: #fff !important; }
+
+    /* ── Page layout ────────────────────────────────────────────────
+       The ONLY people-free zone is the top-left corner of the image.
+       Horizontally safe limit: ~23% of scaled-image width.
+       Vertically safe limit:   50vh (image vertical midpoint).
+
+       Desktop (≥ 640 px): 2-col grid — form in the left column.
+         Column width = min(300px, 22vw)
+           → 300 px   at 1920 wide (1920×22% = 422 px  → well under)
+           → 300 px   at 1440 wide (image scale: 1.5 → 22% × 1440 = 317 px)
+           → 276 px   at 1256 wide (22vw)
+         Card max-height keeps it inside the top half.
+       Mobile (< 640 px): single full-width column.
+         Background-position left center on portrait viewport shows
+         mostly the left quarter of the image (the logo/text area).
+         The people are cropped out to the right, so full-width is safe. */
+    .page-outer {
+      min-height: calc(100dvh - 3.5rem); /* 3.5rem = nav h-14 */
+      padding: 1.25rem 1.5rem 2rem;
+      display: flex;
+      align-items: flex-start;
+    }
+
+    .form-column {
+      width: min(300px, 22vw);
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 639px) {
+      .form-column { width: 100%; }
+      body { background-position: 20% center; }
+    }
+
+    /* ── Glassmorphism card ─────────────────────────────────────────
+       max-height keeps card bottom above 50 vh (where portraits begin).
+       nav = 56 px, top padding = 1.25rem = 20 px  → card top ≈ 76 px
+       max-height = 50vh – 56px – 20px – 20px (safety margin) = 50vh – 96px */
+    .glass-card {
+      background: rgba(6, 7, 18, 0.58);
+      -webkit-backdrop-filter: blur(22px) saturate(140%);
+      backdrop-filter: blur(22px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      border-radius: 18px;
+      padding: 1.25rem 1.25rem 1.35rem;
+      box-shadow:
+        0 10px 40px rgba(0,0,0,.6),
+        inset 0 1px 0 rgba(255,255,255,.09);
+      /* Constrain card to safe (top-left, above 50vh) zone */
+      max-height: calc(50vh - 5.5rem);
+      overflow-y: auto;
+      overflow-x: hidden;
+      scroll-behavior: smooth;
+    }
+    @media (max-width: 639px) {
+      .glass-card { max-height: none; }
+    }
+    /* Thin, subdued scrollbar */
+    .glass-card::-webkit-scrollbar       { width: 4px; }
+    .glass-card::-webkit-scrollbar-track { background: transparent; }
+    .glass-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 2px; }
+
+    /* ── Form controls ──────────────────────────────────────────────*/
+    .field-label {
+      display: block;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      color: rgba(255,255,255,.65);
+      margin-bottom: .35rem;
+    }
+    .glass-input {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.17);
+      border-radius: 9px;
+      padding: 8px 11px;
+      font-size: .82rem;
+      color: #fff;
+      font-family: inherit;
+      transition: border-color .15s, background .15s, box-shadow .15s;
+    }
+    .glass-input::placeholder { color: rgba(255,255,255,.3); }
+    .glass-input:focus {
+      outline: none;
+      border-color: rgba(129,140,248,.75);
+      background: rgba(255,255,255,.11);
+      box-shadow: 0 0 0 3px rgba(99,102,241,.22);
+    }
+    .glass-input option { color: #111; background: #fff; }
+    .glass-input.error  { border-color: rgba(252,165,165,.7); }
+    textarea.glass-input { resize: vertical; }
+
+    /* ── Stars ──────────────────────────────────────────────────────*/
+    .star { font-size: 1.7rem; cursor: pointer; color: rgba(255,255,255,.22); transition: color .1s; line-height:1; }
+    .star.filled  { color: #facc15; }
+    .star.hovered { color: #fde047; }
+
+    /* ── Success message ────────────────────────────────────────────*/
+    .glass-success {
+      display: flex; align-items: center; gap: 9px;
+      background: rgba(16,185,129,.18);
+      border: 1px solid rgba(52,211,153,.38);
+      color: #6ee7b7;
+      border-radius: 11px;
+      padding: 11px 14px;
+      font-size: .83rem; font-weight: 600;
+      margin-bottom: .9rem;
+    }
+
+    /* ── Submit button ──────────────────────────────────────────────*/
+    .btn-submit {
+      display: inline-block;
+      padding: 9px 22px;
+      font-size: .82rem; font-weight: 700; font-family: inherit;
+      letter-spacing: .03em;
+      color: #fff;
+      background: rgba(99,102,241,.82);
+      border: 1px solid rgba(129,140,248,.4);
+      border-radius: 9px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-submit:hover { background: rgba(79,70,229,.95); }
+
+    /* ── Error text ─────────────────────────────────────────────────*/
+    .err-text { font-size:.72rem; color:#fca5a5; margin-top:.3rem; }
+  </style>
+</head>
+<body>
+  <div id="app-nav"></div>
+
+  <div class="page-outer">
+    <div class="form-column">
+
+      <!-- Success banner -->
+      <div id="success-msg" class="glass-success hidden">
+        <span style="font-size:1rem">✓</span>
+        <span>Thanks for your feedback!</span>
+      </div>
+
+      <!-- Glass card -->
+      <div class="glass-card">
+        <h1 style="font-size:1.1rem;font-weight:800;margin:0 0 3px;color:#fff;">Gửi phản hồi</h1>
+        <p style="font-size:.72rem;color:rgba(255,255,255,.45);margin:0 0 1rem;">
+          Nhận xét là bắt buộc. Tên là tùy chọn.
+        </p>
+
+        <form id="feedback-form" novalidate>
+
+          <!-- Name -->
+          <div style="margin-bottom:.75rem;">
+            <label class="field-label" for="f-name">
+              TÊN <span style="color:rgba(255,255,255,.35);font-weight:400;">(tùy chọn)</span>
+            </label>
+            <input id="f-name" name="name" type="text"
+                   placeholder="Nguyễn Văn A"
+                   class="glass-input" />
+          </div>
+
+          <!-- Location -->
+          <div style="margin-bottom:.75rem;">
+            <label class="field-label" for="f-location">ĐỊA ĐIỂM</label>
+            <select id="f-location" name="location" class="glass-input"></select>
+          </div>
+
+          <!-- Rating -->
+          <div style="margin-bottom:.75rem;">
+            <span class="field-label">
+              ĐÁNH GIÁ <span style="color:#f87171;">*</span>
+            </span>
+            <div id="star-widget" style="display:flex;gap:2px;margin-bottom:.25rem;"
+                 role="group" aria-label="Đánh giá từ 1 đến 5 sao">
+              <span class="star" data-value="1" role="radio" aria-label="1 sao" tabindex="0">★</span>
+              <span class="star" data-value="2" role="radio" aria-label="2 sao" tabindex="0">★</span>
+              <span class="star" data-value="3" role="radio" aria-label="3 sao" tabindex="0">★</span>
+              <span class="star" data-value="4" role="radio" aria-label="4 sao" tabindex="0">★</span>
+              <span class="star" data-value="5" role="radio" aria-label="5 sao" tabindex="0">★</span>
+            </div>
+            <input type="hidden" id="f-rating" name="rating" value="" />
+            <p id="err-rating" class="err-text hidden">Vui lòng chọn đánh giá.</p>
+          </div>
+
+          <!-- Comment -->
+          <div style="margin-bottom:1rem;">
+            <label class="field-label" for="f-comment">
+              NHẬN XÉT <span style="color:#f87171;">*</span>
+            </label>
+            <textarea id="f-comment" name="comment" rows="3"
+                      placeholder="Chia sẻ trải nghiệm của bạn…"
+                      class="glass-input"></textarea>
+            <p id="err-comment" class="err-text hidden">Vui lòng nhập nhận xét.</p>
+          </div>
+
+          <button type="submit" class="btn-submit">Gửi phản hồi</button>
+
+        </form>
+      </div><!-- /glass-card -->
+    </div><!-- /form-column -->
+  </div><!-- /page-outer -->
+
+  <script src="../shared/storage.js"></script>
+  <script src="../shared/nav.js"></script>
+  <script>
+    // Populate location dropdown
+    const locationEl = document.getElementById('f-location')
+    LOCATIONS.forEach(loc => {
+      const opt = document.createElement('option')
+      opt.value = loc; opt.textContent = loc
+      locationEl.appendChild(opt)
+    })
+
+    // ── Star widget ────────────────────────────────────────────────
+    let selectedRating = 0
+    const stars       = document.querySelectorAll('.star')
+    const ratingInput = document.getElementById('f-rating')
+
+    function paintStars(upTo) {
+      stars.forEach(s => {
+        const v = Number(s.dataset.value)
+        s.classList.toggle('filled',  !upTo && v <= selectedRating)
+        s.classList.toggle('hovered', !!upTo && v <= upTo)
+      })
+    }
+
+    stars.forEach(star => {
+      star.addEventListener('click', () => {
+        selectedRating = Number(star.dataset.value)
+        ratingInput.value = selectedRating
+        paintStars(0)
+        document.getElementById('err-rating').classList.add('hidden')
+      })
+      star.addEventListener('mouseover', () => paintStars(Number(star.dataset.value)))
+      star.addEventListener('mouseout',  () => paintStars(0))
+      star.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); star.click() }
+      })
+    })
+
+    // ── Form submission ────────────────────────────────────────────
+    document.getElementById('feedback-form').addEventListener('submit', function (e) {
+      e.preventDefault()
+
+      const comment = document.getElementById('f-comment').value.trim()
+      const rating  = Number(ratingInput.value)
+      let valid = true
+
+      if (!rating) {
+        document.getElementById('err-rating').classList.remove('hidden')
+        valid = false
+      } else {
+        document.getElementById('err-rating').classList.add('hidden')
+      }
+
+      if (!comment) {
+        document.getElementById('err-comment').classList.remove('hidden')
+        document.getElementById('f-comment').classList.add('error')
+        valid = false
+      } else {
+        document.getElementById('err-comment').classList.add('hidden')
+        document.getElementById('f-comment').classList.remove('error')
+      }
+
+      if (!valid) return
+
+      addFeedback({
+        name:     document.getElementById('f-name').value.trim(),
+        location: locationEl.value,
+        rating,
+        comment,
+      })
+
+      this.reset()
+      selectedRating = 0
+      ratingInput.value = ''
+      paintStars(0)
+
+      const msg = document.getElementById('success-msg')
+      msg.classList.remove('hidden')
+      setTimeout(() => msg.classList.add('hidden'), 4000)
+    })
+
+    document.getElementById('f-comment').addEventListener('input', function () {
+      if (this.value.trim()) {
+        document.getElementById('err-comment').classList.add('hidden')
+        this.classList.remove('error')
+      }
+    })
+  </script>
+</body>
+</html>

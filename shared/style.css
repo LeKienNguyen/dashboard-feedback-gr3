@@ -1,0 +1,11 @@
+/* Project-wide styles not covered by Tailwind utility classes */
+
+body {
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+.page-content {
+  max-width: 64rem;       /* matches Tailwind max-w-5xl */
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+}
